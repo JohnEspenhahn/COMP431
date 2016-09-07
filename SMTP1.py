@@ -27,7 +27,7 @@ class SMTPState:
 
 		# WRite to files	
 		for to_mailbox in self.to_mailboxes: 
-			with open("forward/" + to_mailbox, "w") as f:
+			with open("forward/" + to_mailbox, "a") as f:
 				f.write(data_str)
 
 # Custom exception thrown when a parse function fails
