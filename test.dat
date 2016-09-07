@@ -1,0 +1,16 @@
+MAIL FROM: test@test>
+MAIL FROM: <test@test   
+MAIL FROM: <test@test>  
+MAIL FROM: <another@test>
+MAIL FROM: <me@john>
+RCPT TO: <john@espenhahn.org>
+RCPT TO: <another@url.com>
+DATA
+Thisi
+is a 
+
+test line of 
+
+
+data
+.
