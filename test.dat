@@ -6,11 +6,16 @@ MAIL FROM: <me@john>
 RCPT TO: <john@espenhahn.org>
 RCPT TO: <another@url.com>
 DATA
-Thisi
-is a 
-
-test line of 
-
-
-data
+EMAIL 1
+.
+MAIL FROM: <you@john>
+RCPT TO: <john@espenhahn.org>
+DATA  
+EMAIL 2
+.
+MAIL FROM: <three@john>
+RCPT TO: <you@john>
+RCPT TO: <me@john>
+DATA	
+EMAIL 3
 .

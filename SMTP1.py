@@ -1,6 +1,7 @@
 import sys
 import re
 
+# Possible states of the state machine
 class States:MAIL_FROM, RCPT_TO_FIRST, RCPT_TO, DATA, EOF = range(5)
 
 # Class to manage state of the machine
@@ -36,7 +37,7 @@ class OutOfOrderException(Exception):pass
 smtp = SMTPState()
 
 # The common "<nullspace> <CRLF>" ending
-re_null_crlf = re.compile("^[ \t]*$")
+re_null_crlf = re.compile("^[ \t]*[\r]?$")
 
 # Parse data while in state = DATA
 def readdata(line):
@@ -44,7 +45,7 @@ def readdata(line):
 
 	if line == ".":
 		smtp.writeToFile()
-		smtp.state = States.MAIL_FROM
+		smtp.reset()
 		print("250 OK")
 	else:
 		smtp.data.append(line)	
@@ -101,10 +102,14 @@ re_local_part_ascii = re.compile(r"^[\x00-\x7F]+$")
 re_local_part_char = re.compile(r"^[^ \t<>()\[\]\\\.,;:@\"]+$")
 re_domain_elem = re.compile("^[a-zA-Z][a-zA-Z0-9]+$")
 def match_path(token):
+	# Check <path> token
 	match = re.match(re_path, token)
 	if match == None: raise ParseException("path")
-
+	
+	# Store mailbox to return if parse matched 
 	mailbox = match.group(1)
+
+	# Check <mailbox> token	
 	match = re.match(re_mailbox, match.group(1))
 	if match == None: raise ParseException("mailbox")
 
@@ -114,7 +119,6 @@ def match_path(token):
 	# Check is ascii, then check not illegal char
 	match = re.match(re_local_part_ascii, match.group(1))
 	if match == None: raise ParseException("local-part")
-	
 	match = re.match(re_local_part_char, match.group(0))
 	if match == None: raise ParseException("local-part")
 
@@ -123,6 +127,7 @@ def match_path(token):
 		match = re.match(re_domain_elem, de)
 		if match == None: raise ParseException("domain")
 
+	# Return passed in token with matched path removed, and matched mailbox
 	return re.sub(re_path, "", token), mailbox
 
 # Main loop
