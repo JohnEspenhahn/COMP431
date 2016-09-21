@@ -69,5 +69,5 @@ with open(mailbox_name, "r") as mailbox_file:
 		
 			line = mailbox_file.readline()
 	except Exception as e:
-		print(e)
+		# print(e)
 		print("QUIT")
