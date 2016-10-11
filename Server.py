@@ -3,15 +3,18 @@ import re
 from socket import *
 
 # Possible states of the state machine
-class States:MAIL_FROM, RCPT_TO_FIRST, RCPT_TO, DATA, EOF = range(5)
+class States:HELLO, MAIL_FROM, RCPT_TO_FIRST, RCPT_TO, DATA, EOF = range(6)
 
 # Class to manage state of the machine
 class SMTPState:
 	def __init__(self):
+		self.conn = None
 		self.reset()	
 
 	def reset(self):
-		self.state = States.MAIL_FROM
+		if self.conn != None: self.conn.close()
+		self.conn = None
+		self.state = States.HELLO
 		self.from_mailbox = ""
 		self.to_mailboxes = []
 		self.data = []
@@ -28,7 +31,8 @@ class SMTPState:
 
 		# WRite to files	
 		for to_mailbox in self.to_mailboxes: 
-			with open("forward/" + to_mailbox, "a") as f:
+			_, domain = match_mailbox(to_mailbox)
+			with open(domain, "a") as f:
 				f.write(data_str)
 
 # Custom exception thrown when a parse function fails
@@ -90,32 +94,41 @@ def mailfrom(line):
 	smtp.state = States.RCPT_TO_FIRST
 	print("250 OK")
 
+# Inital handshake "hello" command
+re_hello = re.compile("^HELO")
+def hello(line):
+	if smtp.state != States.HELLO: raise OutOfOrderException()
+	line = match("helo", re_hello, line)
+	smtp.state = States.MAIL_FROM
+	print("250 " + line.strip() + ", pleased to meet you")
+
 # Check for the pattern, if found remove it. Otherwise throw parse exception
 def match(name, pattern, token):
 	match = re.match(pattern, token)
 	if match == None: raise ParseException(name)
 	else: return re.sub(pattern, "", token)
 
-# Check for the <path> object. If found remove, otherwise throw parse exception
+# Check for the <path> object. If found remove from original string and return that and mailbox, otherwise throw parse exception
 re_path = re.compile("^<(.+?)>")
 re_mailbox = re.compile("^(.+?)@(.+?)$")
 re_local_part_ascii = re.compile(r"^[\x00-\x7F]+$")
 re_local_part_char = re.compile(r"^[^ \t<>()\[\]\\\.,;:@\"]+$")
 re_domain_elem = re.compile("^[a-zA-Z][a-zA-Z0-9]+$")
 def match_path(token):
-	# Check <path> token
 	match = re.match(re_path, token)
 	if match == None: raise ParseException("path")
 	
-	# Store mailbox to return if parse matched 
 	mailbox = match.group(1)
+	line, domain = match_mailbox(mailbox)
+	return line, mailbox
 
-	# Check <mailbox> token	
-	match = re.match(re_mailbox, match.group(1))
+# Parse a mailbox. If found returns original string with mailbox removed and the domain of the mailbox
+def match_mailbox(mailbox):
+	match = re.match(re_mailbox, mailbox)
 	if match == None: raise ParseException("mailbox")
 
-	# Arbitrary number of "domain elements" seperated by "."
-	domain_elems = match.group(2).split(".")
+	domain = match.group(2)
+	domain_elems = domain.split(".")
 
 	# Check is ascii, then check not illegal char
 	match = re.match(re_local_part_ascii, match.group(1))
@@ -128,29 +141,54 @@ def match_path(token):
 		match = re.match(re_domain_elem, de)
 		if match == None: raise ParseException("domain")
 
-	# Return passed in token with matched path removed, and matched mailbox
-	return re.sub(re_path, "", token), mailbox
+	return re.sub(re_path, "", token), domain
 
 # Main loop
-while smtp.state != States.EOF:
+def main():
+	PORT = int(sys.argv[1])
+	socket = socket(AF_INET,SOCKET_STREAM)
+	
+	# Try starting the server
 	try:
-		line = raw_input()
-		print(line)
-		if smtp.state == States.DATA:
-			readdata(line)
-		elif re.match(re_data_1, line):
-			data(line)
-		elif re.match(re_rcpt_to_1, line):
-			rcptto(line)
-		elif re.match(re_mail_from_1, line):
-			mailfrom(line)
-		else:
-			print("500 Syntax error: command unrecognized")
-	except EOFError:
-		smtp.state = States.EOF
-	except ParseException as e:
-		# print(str(e))
-		print("501 Syntax error in parameters or arguments")
-	except OutOfOrderException:
-		print("503 Bad sequence of commands")
-		smtp.reset()
+		socket.bind(('', PORT))
+		socket.listen(1)
+	except: return
+	
+	while True:
+		smtp.conn = socket.accept()
+		runSMTP()
+
+# Run SMTP protocol for connection
+def runSMTP():
+	if (smtp.conn == None) return
+
+	smtp.conn.send("220 " + socket.getfqdn())
+	while True:
+		try:
+			line = smtp.conn.recv(1024).decode()
+			print(line)
+			if smtp.state == States.DATA:
+				readdata(line)
+			elif re.match(re_hello, line):
+				hello(line)
+			elif re.match(re_data_1, line):
+				data(line)
+			elif re.match(re_rcpt_to_1, line):
+				rcptto(line)
+			elif re.match(re_mail_from_1, line):
+				mailfrom(line)
+			elif line == "QUIT":
+				break
+			else:
+				smtp.conn.send("500 Syntax error: command unrecognized")
+				
+		except ParseException as e:
+			smtp.conn.send("501 Syntax error in parameters or arguments")
+		except OutOfOrderException:
+			smtp.conn.send("503 Bad sequence of commands")
+			print("503 Bad sequence of commands")
+			break
+	smtp.reset()
+
+# Start
+main()
